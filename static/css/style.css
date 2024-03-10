@@ -1,0 +1,36 @@
+h1{
+  color:rgb(70,120,178);
+}
+
+.btn {
+  margin-top: 10px;
+}
+
+.input {
+  font-weight: normal;
+}
+
+.color-green {
+  color: green;
+}
+.color-custom {
+  color: rgb(195, 145, 67);
+}
+
+.color-purple {
+  color: #FF4F02;
+}
+
+.code {
+  background-color: #DDDDDD;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.input-container {
+  padding-bottom: 10px;
+}
+
+.btn {
+  margin-left: 10px;
+}

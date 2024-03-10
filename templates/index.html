@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css";; rel="stylesheet">
+        <link rel="stylesheet" href="/static/css/style.css">
+    </head>
+     <body class="bg-gray">
+        <main>
+            <div class="container">
+                <div class="row">
+                    <div class="col-md-12 p-2">
+                        <h1>Graph Query</h1>
+                        <form class="form-inline" method="post">
+                            <div class="form-group">
+                              <label class="sr-only" for="input_en"></label>
+                              <div class="input-group mb-3">
+                                 <textarea id="input_en" name="input_en" placeholder="ex: sector ENERG, high total assets, latest report" type="text" class="form-control" cols="50", rows="6"></textarea>
+                              </div>
+                              <button type="submit" class="btn btn-primary">Query</button>
+                            </div>
+                        </form>
+                        {% if output_table %}
+                        <style>
+                            table {
+                                width: 80%;
+                                border-collapse: collapse;
+                            }
+                            th, td {
+                                border: 1px solid black;
+                                padding: 8px;
+                                text-align: left;
+                            }
+                            th {
+                                background-color: rgb(70,120,178);
+                                color: white;
+                                font-weight: normal;
+                            }
+                        </style>
+                        <div class="input-container">
+                        <h4>Input</h4>
+                        <div class="code">{{ input_en }}</div></div>
+                        {% if output_table == "error"%}
+                        <p>No Data</p>
+                        {% else %}
+                        <h4>Cypher Command</h4>
+                        <div class="code">{{ output_command | safe }}</div>
+                        <h4>Output</h4>
+                        {{ output_table | safe }}
+                        {% endif %}
+                        {% endif %}
+                                </div>
+                </div>
+            </div>
+        </main>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script>
+    </body>
+</html>
