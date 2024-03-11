@@ -67,6 +67,8 @@ def find_most_related_prompt(text):
 
     The value of stock_value_value is one of the following;
     STOCK_VALUE_VALUE = ["average", "close", "high", "low", "open", "prior", "totalVolume"]
+    Be careful, phrase like "high average" only contains "average", but "high value" or "high price" contains "high".
+    If there is no value for stock_value_value_list, just return [].
 
     The value of financial_statement_value is one of the following;
     FINANCIAL_STATEMENT_VALUE = [

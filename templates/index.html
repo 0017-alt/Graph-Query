@@ -6,6 +6,23 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css";; rel="stylesheet">
         <link rel="stylesheet" href="/static/css/style.css">
+        <style>
+            #suggestions {
+              position: absolute;
+              background-color: #f9f9f9;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              padding: 5px;
+              z-index: 10;
+            }
+            #suggestions div {
+              cursor: pointer;
+              padding: 5px;
+            }
+            #suggestions div:hover {
+              background-color: #ddd;
+            }
+          </style>
     </head>
      <body class="bg-gray">
         <main>
@@ -17,7 +34,8 @@
                             <div class="form-group">
                               <label class="sr-only" for="input_en"></label>
                               <div class="input-group mb-3">
-                                 <textarea id="input_en" name="input_en" placeholder="ex: sector ENERG, high total assets, latest report" type="text" class="form-control" cols="50", rows="6"></textarea>
+                                 <textarea id="input_en" name="input_en" placeholder="ex: sector ENERG, high total assets, latest report" type="text" class="form-control" cols="50", rows="6" oninput="showSuggestions(this)"></textarea>
+                                 <div id="suggestions"></div>
                               </div>
                               <button type="submit" class="btn btn-primary" id="myBtn" style="display: none;">Query</button>
                             </div>
@@ -69,6 +87,61 @@
             }
             });
         </script>
+        <script>
+            function showSuggestions(textarea) {
+              const sectorTriggerText = 'sector ';
+              const sectorSuggestions = ["ICT", "TRANS", "PROP", "ENERG", "BANK", "HELTH", "FOOD", "TOURISM", "COMM", "ETRON", "PETRO", "FIN", "CONMAT", "PKG", "INSUR"];
+              const stockValueTriggerText = 'higher ';
+              const stockValueSuggestions = ["average", "close", "high", "low", "open", "prior", "totalVolume","roa","roe", "de", "financialStatementtype", "dateAsOf", "accountPeriod", "totalAssets", "totalAssetTurnover", "totalLiabilities", "paidupShareCapital", "shareholderEquity", "totalEquity", "totalRevenueQuarter", "totalRevenueAccum", "ebitQuarter", "ebitAccum", "netProfitQuarter", "netProfitAccum", "epsQuarter", "epsAccum", "operatingCacheFlow", "investingCashFlow", "financingCashFlow", "netProfitMarginQuarter", "netProfitMarginAccum", "fixedAssetTurnover"];
+              const suggestionsContainer = document.getElementById('suggestions');
+              suggestionsContainer.innerHTML = '';
+
+              const inputText = textarea.value;
+              const cursorPosition = textarea.selectionStart;
+
+              if (inputText.substring(0, cursorPosition).endsWith(sectorTriggerText)) {
+                sectorSuggestions.forEach(suggestion => {
+                  const suggestionElement = document.createElement('div');
+                  suggestionElement.textContent = suggestion;
+                  suggestionElement.addEventListener('click', () => {
+                    const newText = inputText.substring(0, cursorPosition) + suggestion + inputText.substring(cursorPosition);
+                    textarea.value = newText;
+                    suggestionsContainer.style.display = 'none';
+                  });
+                  suggestionsContainer.appendChild(suggestionElement);
+                });
+
+                const textareaRect = textarea.getBoundingClientRect();
+
+                suggestionsContainer.style.left = `${textareaRect.left}px`;
+                suggestionsContainer.style.top = `${textareaRect.top - 30}px`;
+
+                suggestionsContainer.style.display = 'block';
+              }
+              else if (inputText.substring(0, cursorPosition).endsWith(stockValueTriggerText)) {
+                stockValueSuggestions.forEach(suggestion => {
+                  const suggestionElement = document.createElement('div');
+                  suggestionElement.textContent = suggestion;
+                  suggestionElement.addEventListener('click', () => {
+                    const newText = inputText.substring(0, cursorPosition) + suggestion + inputText.substring(cursorPosition);
+                    textarea.value = newText;
+                    suggestionsContainer.style.display = 'none';
+                  });
+                  suggestionsContainer.appendChild(suggestionElement);
+                });
+
+                const textareaRect = textarea.getBoundingClientRect();
+
+                suggestionsContainer.style.left = `${textareaRect.left}px`;
+                suggestionsContainer.style.top = `${textareaRect.top - 30}px`;
+
+                suggestionsContainer.style.display = 'block';
+              }
+              else {
+                suggestionsContainer.style.display = 'none';
+              }
+            }
+          </script>
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
         <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script>
     </body>
