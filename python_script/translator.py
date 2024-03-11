@@ -1,368 +1,121 @@
-import Levenshtein as levenshtein
 import re
 import datetime
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from neo4j import GraphDatabase, Driver
 import pandas as pd
 from collections import OrderedDict
+import spacy
+import openai
+import json
 
-PROMPT = [
-  # 8
-  "get average, open, close on 2023/10/11",
-  # 7
-  "highest totalAssets in 2023",
-  # 0
-  "for setcor ENERG order according to totalAssets based on all financial statements",
-  "sector energ, total assets, all reports",
-  # 1
-  "for sector ENERG order according to totalAssets based on latest financial statements",
-  "sector energ, total assets, latest reports"
-  # 2
-  "is 1 or more",
-  "is more than 1",
-  "is over 1",
-  "is above 1",
-  "is 1 or less",
-  "is under 1",
-  # 3
-  "safe stock order",
-  # 4
-  "big change in stock price on 2023/10/11",
-  # 5
-  "high average stock price on 2023/10/11",
-  "high average price on 2023/10/11",
-  "high average stock price on 2023/10/11(open, close)",
-  "high average stock price on 2023/10/11 with open, close"
-  # 6
-  "for sector ENERG high average stock price on 2023/10/11",
-  "sector food high average value on 2023/10/11",
-  "sector energ high average on 2023/10/11 with open, close",
-  "sector energ high average on 2023/10/11(open, close)"
-]
+# Initialize spaCy
+nlp = spacy.load("en_core_web_sm")
 
-PROMPT_ID = [
-  8,
-  7,
-  0,
-  0,
-  1,
-  1,
-  2,
-  2,
-  2,
-  2,
-  2,
-  2,
-  3,
-  4,
-  5,
-  5,
-  5,
-  6,
-  6,
-  6,
-  6
-]
+# Initialize OpenAI API
+openai.api_key = "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"
 
-# https://media.set.or.th/set/Documents/2022/Oct/05_1_Company_Fundamental_Specification.pdf
+def ask_gpt(insert_prompt):
+  model_choice = "gpt-4"
+  try:
+    response = openai.ChatCompletion.create(
+      model=model_choice,
+      messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": insert_prompt}
+      ]
+    )
+    return response['choices'][0]['message']['content'].strip()
+  except Exception as e:
+    return f"An error occurred: {e}"
 
-STOCK_VALUE_VALUE = [
-  "average",
-  "close",
-  "high",
-  "low",
-  "open",
-  "prior",
-  "totalVolume"
-]
-
-# if no mention, select 'Quarter', and select 'Accum' if specified
-FINANCIAL_STATEMENT_VALUE = [
-  "roa",
-
-  "roe",
-
-  "de",
-
-  "financialStatementtype",
-
-  "dateAsOf",
-
-  "accountPeriod",
-
-  "totalAssets",
-  "totalAssetTurnover",
-
-  "totalLiabilities",
-
-  "paidupShareCapital",
-
-  "shareholderEquity",
-  "totalEquity",
-
-  "totalRevenueQuarter",
-  "totalRevenueAccum",
-
-  "ebitQuarter",
-  "ebitAccum",
-
-  "netProfitQuarter",
-  "netProfitAccum",
-
-  "epsQuarter",
-  "epsAccum",
-
-  "operatingCacheFlow",
-  "investingCashFlow",
-  "financingCashFlow",
-
-  "netProfitMarginQuarter",
-  "netProfitMarginAccum",
-
-  "fixedAssetTurnover"
-]
-
-SECTOR = ["ICT", "TRANS", "PROP", "ENERG", "BANK", "HELTH", "FOOD", "TOURISM", "COMM", "ETRON", "PETRO", "FIN", "CONMAT", "PKG", "INSUR"]
-
-CONDITION = [
-  "or more",
-  "or over",
-  "or above",
-
-  "more than",
-  "larger than",
-  "greater than",
-  "bigger than",
-  "over",
-  "above",
-
-  "or less",
-  "or under",
-  "or below",
-
-  "less than",
-  "under",
-  "below",
-  "smaller than"
-]
-
-STANDARD_CONDITION = [
-  ">=",
-  ">=",
-  ">=",
-
-  ">",
-  ">",
-  ">",
-  ">",
-  ">",
-  ">",
-
-  "<=",
-  "<=",
-  "<=",
-
-  "<",
-  "<",
-  "<",
-  "<"
-]
-
-# Caluculate cos related ratio of two texts
-def calc_cos_text(text1,text2):
-    vectorizer = TfidfVectorizer()
-    vectors = vectorizer.fit_transform([text1, text2])
-    similarity = cosine_similarity(vectors)
-    max_similarity = np.max(np.triu(similarity, k=1))
-    return max_similarity
-
-# Caluculate cos related ratio of two words
-def calc_cos_word(word1, word2):
-  return levenshtein.jaro_winkler(word1, word2)
 
 # Find the most related prompt
 def find_most_related_prompt(text):
-  max_cos = 0
-  max_cos_index = -1
+  gpt_input = """
+    You follow the program below;
 
-  if "safe" in text:
-    return 3
+    Thare are template prompts as follws;
+    PROMPT = [
+      # 0
+      "for setcor ENERG order according to totalAssets based on all financial statements",
+      # 1
+      "for sector ENERG order according to totalAssets based on latest financial statements",
+      # 2
+      "eps is 1 or more",
+      "eps is under 1",
+      # 3
+      "safe stock order",
+      # 4
+      "big change in stock value on 2023/10/11",
+      # 5
+      "Arrange the stocks in ascending order based on the average stock price on 2023/10/11. with showing open, close",
+      # 6
+      "Arrange the stocks in sector ENERG in ascending order based on the average stock price on 2023/10/11 with showing open, close",
+      # 7
+      "Arrange the stocks in ascending order based on total assets in 2023",
+      # 8
+      "get average, open, close price on 2023/10/11",
+      # 9
+      "Arrange the stocks in ascending order based on total assets in quarter 3 of 2023",
+    ]
 
-  for i in range(len(PROMPT)):
-    cos = calc_cos_text(text, PROMPT[i])
-    if cos > max_cos:
-      max_cos = cos
-      max_cos_index = PROMPT_ID[i]
-  return max_cos_index
+    when the input is given, you return the number which is the most similar among the template prompts.
+    Also, you should return the information of sector, feature of stock value(used to order data), list of stock value featue(not used to order data) date, year, feature of financial statement, condition, and quarter.
+    The format id as follows;
+    {"prompt": 1, "sector": "ENERG", "stock_value_value": "average", "stock_value_value_list": ["low", "high"], "date": "2023/10/11", "year": "2023", "financial_statement_value": "totalAssets", "condition": "epsQuarter > 1", "quarter": 3}
+    If there is no proper value, the content shold be "".
 
-def find_sector(text):
-  max_cos = 0
-  most_similar_sector = ""
-  split_text = text.split()
-  for w in split_text:
-    for s in SECTOR:
-      cos = calc_cos_word(w, s)
-      if cos > max_cos:
-        max_cos = cos
-        most_similar_sector = s
-      cos = calc_cos_word(w, s.lower())
-      if cos > max_cos:
-        max_cos = cos
-        most_similar_sector = s
+    The value of stock_value_value is one of the following;
+    STOCK_VALUE_VALUE = ["average", "close", "high", "low", "open", "prior", "totalVolume"]
 
-  if most_similar_sector == "":
-    print("No Match: SECTOR")
-    return "ERROR"
-  if most_similar_sector == "COMM":
-    if "information" in text:
-      most_similar_sector = "ICT"
-  elif most_similar_sector == "PETRO":
-    if "construction" in text:
-      most_similar_sector = "CONMAT"
-  return most_similar_sector
+    The value of financial_statement_value is one of the following;
+    FINANCIAL_STATEMENT_VALUE = [
+    "roa",
+    "roe",
+    "de",
+    "financialStatementtype",
+    "dateAsOf",
+    "accountPeriod",
+    "totalAssets",
+    "totalAssetTurnover",
+    "totalLiabilities",
+    "paidupShareCapital",
+    "shareholderEquity",
+    "totalEquity",
+    "totalRevenueQuarter",
+    "totalRevenueAccum",
+    "ebitQuarter",
+    "ebitAccum",
+    "netProfitQuarter",
+    "netProfitAccum",
+    "epsQuarter",
+    "epsAccum",
+    "operatingCacheFlow",
+    "investingCashFlow",
+    "financingCashFlow",
+    "netProfitMarginQuarter",
+    "netProfitMarginAccum",
+    "fixedAssetTurnover"
+    ]
+    There are some values which have *Quarter and *Accum. If there is no mention in the input, select '*Quarter'.
 
-def find_financial_statement_value(text):
-  max_cos = 0
-  most_similar_word = ""
-  split_text = text.split()
-  for w in split_text:
-    for f in FINANCIAL_STATEMENT_VALUE:
-      if w != 'total':
-        if w.replace(',', '') == f:
-          return f
-        elif w.replace(',', '') in f or w.replace(',', '') in f.lower():
-          if f == 'totalAssets':
-            if 'fixed' in text:
-              return 'fixedAssetTurnover'
-            elif 'turnover' in text:
-              return 'totalAssetsTurnover'
-            else:
-              return 'totalAssets'
-          elif f == 'totalRevenueQuarter':
-            if 'accum' in text:
-              return 'totalRevenueAccum'
-            else:
-              return 'totalRevenueQuarter'
-          elif f == 'ebitQuarter':
-              if 'accum' in text:
-                return 'ebitAccum'
-              else:
-                return 'ebitQuarter'
-          elif f == 'netProfitQuarter':
-              if 'accum' in text:
-                return 'netProfitAccum'
-              else:
-                return 'netProfitQuarter'
-          elif f == 'epsQuarter':
-              if 'accum' in text:
-                return 'epsAccum'
-              else:
-                return 'epsQuarter'
-          elif f == 'operatingCacheFlow':
-              if 'financ' in text:
-                return 'financingCacheFlow'
-              elif 'invest' in text:
-                return 'investingCacheFlow'
-              else:
-                return 'operatingCacheFlow'
-          elif f == 'shareholderEquity':
-              if 'shareholder' in text:
-                return 'shareholderEquity'
-              else:
-                return 'totalEquity'
-          else:
-              return f
+    The value of financial_statement_value is one of the following;
+    SECTOR = ["ICT", "TRANS", "PROP", "ENERG", "BANK", "HELTH", "FOOD", "TOURISM", "COMM", "ETRON", "PETRO", "FIN", "CONMAT", "PKG", "INSUR"]
 
-        cos = calc_cos_word(w, f)
-        if cos > max_cos:
-          max_cos = cos
-          most_similar_word = f
+    Conditions consist of stock_value_value and equal or inequality signs.
 
-  if most_similar_word == "":
-    print("No Match: FINANCIAL_STATEMENT_VALUE")
-    return "ERROR"
-  return most_similar_word
+    Date is given in the format of yyyy/mm/dd or yyyy-mm-dd, and if the input has the format of yyyy-q, q shold show quarter.
 
-def find_cond(text):
-  most_similar_index = -1
-  for i in range(len(CONDITION)):
-    if CONDITION[i] in text:
-      most_similar_index = i
-      break
+    Now, you recieve '
+    """ + \
+   text + "'. Please return only the output following the format."
+  gpt_output = ask_gpt(gpt_input)
+  return gpt_output
 
-  if most_similar_index == -1:
-    print("No Match: CONDITION")
-    return "ERROR"
-
-  financial_statement_value = find_financial_statement_value(text)
-  num = str(re.findall(r'\d+', text)[0])
-
-  standard_condition = financial_statement_value + ' ' + STANDARD_CONDITION[i] + ' ' + num
-  return standard_condition
-
-# Find yyyy/mm/dd, yyyy/mm/d, yyyy/m/dd, yyyy/m/d, yyyy-mm-dd, yyyy-mm-d, yyyy-m-dd, yyyy-m-d
-def find_date(text):
-  pattern1 = r'\b\d{4}/(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12][0-9]|3[01])\b'
-  pattern2 = r'\b\d{4}-(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12][0-9]|3[01])\b'
-
-  match1 = re.findall(pattern1, text)
-  match2 = re.findall(pattern2, text)
-
-  pattern = ''
-  if match1 == [] and match2 == []:
-    print("No Match: DATE")
-    return "ERROR"
-  elif match1 == []:
-    pattern = str(match2[0]).replace('-', '/')
-  else:
-    pattern = str(match1[0])
-  return pattern
-
-def find_stock_value_value(text):
-  max_cos = 0
-  most_similar_word = ""
-  split_text = text.split()
-  for w in split_text:
-    for v in STOCK_VALUE_VALUE:
-      if w != 'high':
-        if w.replace(',', '') == v:
-          return v
-      cos = calc_cos_word(w, v)
-      if cos > max_cos:
-        max_cos = cos
-        most_similar_word = v
-
-  if most_similar_word == "":
-    print("No Match: STOCK_VALUE_VALUE")
-    return "ERROR"
-  return most_similar_word
-
-def find_year(text):
-  pattern = r'\b\d{4}\b'
-  return re.findall(pattern, text)[0]
-
-def get_stock_value_value_list(text):
-  output = []
-  split_text = text.split()
-  for w in split_text:
-    for i in range(len(STOCK_VALUE_VALUE)):
-      if w in STOCK_VALUE_VALUE[i] or w[:-1] in STOCK_VALUE_VALUE[i] or w[1:-1] in STOCK_VALUE_VALUE[i]:
-        output.append(STOCK_VALUE_VALUE[i])
-        break
-  output = list(OrderedDict.fromkeys(output))
-  if output == []:
-    print("No Match: STOCK_VALUE_VALUE")
-    return "ERROR"
-  return output
-
-def create_cypher_code(prompt_id, text):
+def create_cypher_code(prompt_id, sector, stock_value_value, stock_value_value_list, date, year, financial_statement_value, condition, quarter):
   output_command = ""
   if prompt_id == 0:
-    sector = find_sector(text)
-    financial_statement_value = find_financial_statement_value(text)
-    if sector == "ERROR" or financial_statement_value == "ERROR":
+    if sector == "" or financial_statement_value == "":
       return ""
     output_command = "MATCH (a:StandardIndustrialClassification {sectorCode:'" + \
       sector + \
@@ -376,9 +129,7 @@ def create_cypher_code(prompt_id, text):
       financial_statement_value + \
       "\nORDER BY " + financial_statement_value + " DESC"
   elif prompt_id == 1:
-    sector = find_sector(text)
-    financial_statement_value = find_financial_statement_value(text)
-    if sector == "ERROR" or financial_statement_value == "ERROR":
+    if sector == "" or financial_statement_value == "":
       return ""
     output_command = "MATCH (c:FinancialStatement)\n" + \
       "WITH 10 * c.year + c.quarter AS yearQuarterSum\n" + \
@@ -392,15 +143,14 @@ def create_cypher_code(prompt_id, text):
       "RETURN symbol, " + financial_statement_value + \
       "\nORDER BY " + financial_statement_value + " DESC"
   elif prompt_id == 2:
-    cond = find_cond(text)
-    if cond == "ERROR":
+    if condition == "":
       return ""
     output_command = "MATCH (c:FinancialStatement)\n" + \
       "WITH 10 * c.year + c.quarter AS yearQuarterSum\n" + \
       "WITH COLLECT(yearQuarterSum) AS maxSums\n" + \
       "WITH MAX(maxSums)[0] AS maxSum\n" + \
       "MATCH (a:Stock)<-[:STOCK]-(:Company)-[:REPORT]->(b:FinancialStatement)\n" + \
-      "WHERE b." + cond + " AND 10 * b.year + b.quarter = maxSum\n" + \
+      "WHERE b." + condition + " AND 10 * b.year + b.quarter = maxSum\n" + \
       "WITH a.symbol AS symbol\n" + \
       "RETURN symbol"
   elif prompt_id == 3:
@@ -416,77 +166,48 @@ def create_cypher_code(prompt_id, text):
       "ORDER BY netProfitQuarter DESC\n" + \
       "LIMIT 5"
   elif prompt_id == 4:
-    today_str = find_date(text)
-    if today_str == "ERROR":
+    if date == "":
       return ""
-    today = datetime.datetime.strptime(today_str, '%Y/%m/%d')
+    today = datetime.datetime.strptime(date, '%Y/%m/%d')
     yesterday = today + datetime.timedelta(days=-1)
     yesterday = "{:%Y/%m/%d}".format(yesterday).replace("/0", "/")
-    output_command = 'MATCH (todayPrice:StockValue {date: "' + today_str + '"})<-[:STOCK_VALUE]-(stock:Stock)\n' + \
+    output_command = 'MATCH (todayPrice:StockValue {date: "' + date + '"})<-[:STOCK_VALUE]-(stock:Stock)\n' + \
       'MATCH (stock)-[:STOCK_VALUE]->(yesterdayPrice:StockValue {date: "' + yesterday + '"})\n' + \
       'WITH stock.symbol AS symbol, todayPrice, yesterdayPrice\n' + \
       'RETURN symbol, todayPrice.average - yesterdayPrice.average AS priceDifference\n' + \
       'ORDER BY priceDifference DESC'
   elif prompt_id == 5:
-    today_str = find_date(text)
-    stock_value_value = find_stock_value_value(text)
-    if today_str == "ERROR" or stock_value_value == "ERROR":
+    if date == "" or stock_value_value == "" or stock_value_value_list == "":
       return ""
-    if "(" in text or 'with' in text:
-      stock_value_value_list = get_stock_value_value_list(text)
-      stock_value_value_list.remove(stock_value_value)
-      if stock_value_value_list == "ERROR":
-        return ""
-      output_command = 'MATCH (a:Stock)-[r:STOCK_VALUE {date: "' + today_str + '"}]->(b:StockValue)\n' + \
-        "WITH a.symbol AS symbol, b." + stock_value_value + " AS " + stock_value_value + ", "
-      for s in stock_value_value_list:
-        output_command += "b." + s + " AS " + s + ", "
-      output_command = output_command[:-2]
-      output_command += "\nRETURN symbol, " + stock_value_value + ", "
-      for s in stock_value_value_list:
-        output_command += s + ", "
-      output_command = output_command[:-2] + "\nORDER BY " + stock_value_value + " DESC"
-    else:
-      output_command = 'MATCH (a:Stock)-[r:STOCK_VALUE {date: "' + today_str + '"}]->(b:StockValue)\n' + \
-        "WITH a.symbol AS symbol, b." + stock_value_value + " AS " + stock_value_value + "\n" + \
-        "RETURN symbol, " + stock_value_value + "\n" + \
-        "ORDER BY " + stock_value_value + " DESC"
+    output_command = 'MATCH (a:Stock)-[r:STOCK_VALUE {date: "' + date + '"}]->(b:StockValue)\n' + \
+      "WITH a.symbol AS symbol, b." + stock_value_value + " AS " + stock_value_value + ", "
+    for s in stock_value_value_list:
+      output_command += "b." + s + " AS " + s + ", "
+    output_command = output_command[:-2]
+    output_command += "\nRETURN symbol, " + stock_value_value + ", "
+    for s in stock_value_value_list:
+      output_command += s + ", "
+    output_command = output_command[:-2] + "\nORDER BY " + stock_value_value + " DESC"
   elif prompt_id == 6:
-    sector = find_sector(text)
-    today_str = find_date(text)
-    stock_value_value = find_stock_value_value(text)
-    if sector == "ERROR" or today_str == "ERROR" or stock_value_value == "ERROR":
+    if sector == "" or date == "" or stock_value_value == "" or stock_value_value_list == "":
       return ""
-    if "(" in text or "with" in text:
-      stock_value_value_list = get_stock_value_value_list(text)
-      stock_value_value_list.remove(stock_value_value)
-      if stock_value_value_list == "ERROR":
-        return ""
-      output_command = "MATCH (:StandardIndustrialClassification {sectorCode: '" + sector + "'})<-[:BELONGING_SECTOR]-(:Company)-[:STOCK]->(c:Stock)-[:STOCK_VALUE {date: '" + today_str + "'}]->(d:StockValue)\n" + \
-        "WITH c.symbol AS symbol, d." + stock_value_value + " AS " + stock_value_value + ", "
-      for s in stock_value_value_list:
-        output_command += "d." + s + " AS " + s + ", "
-      output_command = output_command[:-2] + "\nRETURN symbol, " + stock_value_value + ", "
-      for s in stock_value_value_list:
-        output_command += s + ", "
-      output_command = output_command[:-2] + "\nORDER BY " + stock_value_value + " DESC"
-    else:
-      output_command = "MATCH (:StandardIndustrialClassification {sectorCode: '" + sector + "'})<-[:BELONGING_SECTOR]-(:Company)-[:STOCK]->(c:Stock)-[:STOCK_VALUE {date: '" + today_str + "'}]->(d:StockValue)\n" + \
-        "WITH c.symbol AS symbol, d." + stock_value_value + " AS " + stock_value_value + "\n" + \
-        "RETURN symbol, " + stock_value_value + "\n" + \
-        "ORDER BY " + stock_value_value + " DESC"
+    output_command = "MATCH (:StandardIndustrialClassification {sectorCode: '" + sector + "'})<-[:BELONGING_SECTOR]-(:Company)-[:STOCK]->(c:Stock)-[:STOCK_VALUE {date: '" + date + "'}]->(d:StockValue)\n" + \
+      "WITH c.symbol AS symbol, d." + stock_value_value + " AS " + stock_value_value + ", "
+    for s in stock_value_value_list:
+      output_command += "d." + s + " AS " + s + ", "
+    output_command = output_command[:-2] + "\nRETURN symbol, " + stock_value_value + ", "
+    for s in stock_value_value_list:
+      output_command += s + ", "
+    output_command = output_command[:-2] + "\nORDER BY " + stock_value_value + " DESC"
   elif prompt_id == 7:
-    year = find_year(text)
-    financial_statement_value = find_financial_statement_value(text)
-    if year == "ERROR" or financial_statement_value == "ERROR":
+    if year == "" or financial_statement_value == "":
       return ""
     output_command = "MATCH (a:Stock)<-[:STOCK]-(:Company)-[:REPORT]->(b:FinancialStatement)\n" + \
-      "WHERE " + "b.year = " + year + "\n" + \
+      "WHERE " + "b.year = " + str(year) + "\n" + \
       "WITH a.symbol AS symbol, b.year AS year, b.quarter AS quarter, b." + financial_statement_value + " AS " + financial_statement_value + "\n" + \
-      "RETURN symbol, year, quarter, " + financial_statement_value
+      "RETURN symbol, year, quarter, " + financial_statement_value + \
+      "\nORDER BY " + financial_statement_value + " DESC"
   elif prompt_id == 8:
-    date = find_date(text)
-    stock_value_value_list = get_stock_value_value_list(text)
     if date == "ERROR" or stock_value_value_list == "ERROR":
       return ""
     output_command = "MATCH (c:Stock)-[:STOCK_VALUE {date: '" + date + "'}]->(d:StockValue)\n" + \
@@ -498,6 +219,14 @@ def create_cypher_code(prompt_id, text):
     for s in stock_value_value_list:
       output_command += s + ", "
     output_command = output_command[:-2]
+  elif prompt_id == 9:
+    if year == "" or financial_statement_value == "":
+      return ""
+    output_command = "MATCH (a:Stock)<-[:STOCK]-(:Company)-[:REPORT]->(b:FinancialStatement)\n" + \
+      "WHERE " + "b.year = " + str(year) + " AND b.quarter = " + str(quarter) + "\n" + \
+      "WITH a.symbol AS symbol, b." + financial_statement_value + " AS " + financial_statement_value + "\n" + \
+      "RETURN symbol, " + financial_statement_value + \
+      "\nORDER BY " + financial_statement_value + " DESC"
 
   return output_command
 
@@ -505,11 +234,22 @@ def main(input_command):
   if input_command == "":
     return "error", ""
 
-  prompt_id = find_most_related_prompt(input_command)
-  if prompt_id < 0:
+  gpt_output = find_most_related_prompt(input_command)
+  print(gpt_output)
+  json_output = json.loads(gpt_output)
+  prompt = json_output.get('prompt', '')
+  sector = json_output.get('sector', '')
+  stock_value_value = json_output.get('stock_value_value', '')
+  stock_value_value_list = json_output.get('stock_value_value_list', '')
+  date = json_output.get('date', '')
+  year = json_output.get('year', '')
+  financial_statement_value = json_output.get('financial_statement_value', '')
+  condition = json_output.get('condition', '')
+  quarter = json_output.get('quarter', '')
+  if prompt == '':
     print("No Match: PROMPT\n")
     return "error", ""
-  output_command = create_cypher_code(prompt_id, input_command)
+  output_command = create_cypher_code(prompt, sector, stock_value_value, stock_value_value_list, date, year, financial_statement_value, condition, quarter)
 
   if output_command == "":
     return "error", ""
