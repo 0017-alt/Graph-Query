@@ -24,7 +24,8 @@ h1{
 .code {
   background-color: #DDDDDD;
   padding: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 20px;
+  font-family: "Source Han Code JP";
 }
 
 .input-container {
@@ -33,4 +34,20 @@ h1{
 
 .btn {
   margin-left: 10px;
+}
+
+.table {
+  margin-bottom: 30px;
+}
+
+details summary:before{
+  content:"▶︎";
+  }
+  details[open] summary:before {
+  content:"▼";
+  }
+
+.cypher_disp {
+  font-weight: bold;
+  font-size: 16px;
 }

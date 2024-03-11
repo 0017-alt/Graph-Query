@@ -2,7 +2,6 @@ import Levenshtein as levenshtein
 import math
 import re
 import datetime
-import sklearn
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -32,6 +31,7 @@ PROMPT = [
     "high average stock price on 2023/10/11",
     # 6
     "for sector ENERG high average stock price on 2023/10/11",
+    "sector food high average value on 2023/10/11",
     # 7
     "highest totalAssets in 2023"
 ]
@@ -50,6 +50,7 @@ PROMPT_ID = [
     3,
     4,
     5,
+    6,
     6,
     7
 ]
@@ -339,11 +340,13 @@ def create_cypher_code(prompt_id, text):
       return ""
     output_command = "MATCH (a:StandardIndustrialClassification {sectorCode:'" + \
       sector + \
-      "'})<-[:BELONGING_SECTOR]-(b:Company)-[:REPORT]->(c:FinancialStatement)\nWITH c.year AS reportYear, c.quarter AS reportQuarter, b.companyName AS companyName, c." + \
+      "'})<-[:BELONGING_SECTOR]-(b:Company)-[:REPORT]->(c:FinancialStatement)\nWITH c.year AS reportYear, c.quarter AS reportQuarter, b, c." + \
       financial_statement_value + \
       " AS " + \
       financial_statement_value + \
-      "\nRETURN companyName, reportYear, reportQuarter, " + \
+      "\nMATCH (b)-[:STOCK]->(d:Stock)\n" + \
+      "WITH reportYear, reportQuarter, d.symbol AS symbol, " + financial_statement_value + \
+      "\nRETURN symbol, reportYear, reportQuarter, " + \
       financial_statement_value + \
       "\nORDER BY " + financial_statement_value + " DESC"
   elif prompt_id == 1:
@@ -356,9 +359,11 @@ def create_cypher_code(prompt_id, text):
       "WITH yearQuarterSum, COLLECT(yearQuarterSum) AS maxSums\n" + \
       "WITH MAX(maxSums)[0] AS maxSum\n" + \
       "MATCH (:StandardIndustrialClassification {sectorCode:'" + sector + "'})<-[:BELONGING_SECTOR]-(b:Company)-[:REPORT]->(c:FinancialStatement)\n" + \
-      "WITH b.companyName AS companyName, c." + financial_statement_value + " AS " + financial_statement_value + ", 10 * c.year + c.quarter AS yearQuarterSum, maxSum" + \
+      "WITH b, c." + financial_statement_value + " AS " + financial_statement_value + ", 10 * c.year + c.quarter AS yearQuarterSum, maxSum\n" + \
+      "MATCH (b)-[:STOCK]->(d:Stock)\n" + \
+      "WITH " + financial_statement_value + ", d.symbol AS symbol, yearQuarterSum, maxSum" + \
       "\nWHERE yearQuarterSum = maxSum\n" + \
-      "RETURN companyName, " + financial_statement_value + \
+      "RETURN symbol, " + financial_statement_value + \
       "\nORDER BY " + financial_statement_value + " DESC"
   elif prompt_id == 2:
     cond = find_cond(text)
@@ -451,16 +456,25 @@ def main(input_command):
         column_names = re.findall(column_pattern, records)
         column_names = list(OrderedDict.fromkeys(column_names))
 
-        data_pattern = r"=\s*([^ ]+)"
-        data = [re.findall(data_pattern, line) for line in records.replace('>', '').split("\n") if line.strip()]
+        data_pattern = r"'([^']+)'|(\d+\.\d+)|(\d+)"
+        data = []
+        for line in records.split('\n'):
+            if line.strip():
+                matches = re.findall(data_pattern, line)
+                values = [match[0] if match[0] else float(match[1]) if match[1] else int(match[2]) for match in matches]
+                data.append(values)
         if len(data) != 0:
           if data[0][0][0] == "'":
             for i in range(len(data)):
               data[i][0] = data[i][0][1:-1]
 
+        for i in range(len(data)):
+          data[i][0] = '<a href="https://www.set.or.th/en/market/product/stock/quote/' + data[i][0] + '/price" target="_blank">' + data[i][0] + '</a>'
+
         if data == []:
           return "error", ""
         df = pd.DataFrame(data, columns=column_names)
+        print(df)
 
         keywords = ["MATCH", "WITH", "WHERE", "RETURN", "LIMIT", "ORDER BY", "DESC", "AS", "AND"]
         pattern_string = r'("[^"]+?")'
@@ -472,5 +486,4 @@ def main(input_command):
         for keyword in keywords:
           colored_output_command = colored_output_command.replace(keyword, f'<span class="color-green">{keyword}</span>')
         colored_output_command = colored_output_command.replace('\n', '<br>')
-
-        return df.to_html(index=False), colored_output_command
+        return df.style.to_html(index=False), colored_output_command
