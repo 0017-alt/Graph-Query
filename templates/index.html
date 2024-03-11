@@ -42,12 +42,6 @@
                         <div class="input-container">
                             <h4>Input</h4>
                             <div class="code">{{ input_en }}</div></div>
-                            {% if output_table == "error"%}
-                            <p>No Data</p>
-                            {% else %}
-                            <h4>Output</h4>
-                            <div class="table">{{ output_table | safe }}</div>
-                            {% endif %}
                             <details>
                                 <summary>
                                     <span class="cypher_disp">Cypher Command</span>
@@ -55,6 +49,12 @@
                                 <div class="code">
                                 {{ output_command | safe }}</div>
                             </details>
+                            {% if output_table == "error"%}
+                            <p>No Data</p>
+                            {% else %}
+                            <h4>Output</h4>
+                            <div class="table">{{ output_table | safe }}</div>
+                            {% endif %}
                             {% endif %}
                         </div>
                 </div>

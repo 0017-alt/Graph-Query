@@ -1,5 +1,4 @@
 import Levenshtein as levenshtein
-import math
 import re
 import datetime
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -10,49 +9,61 @@ import pandas as pd
 from collections import OrderedDict
 
 PROMPT = [
-    # 0
-    "for setcor ENERG order according to totalAssets based on all financial statements",
-    "sector energ, total assets, all reports",
-    # 1
-    "for sector ENERG order according to totalAssets based on latest financial statements",
-    "sector energ, total assets, latest reports"
-    # 2
-    "is 1 or more",
-    "is more than 1",
-    "is over 1",
-    "is above 1",
-    "is 1 or less",
-    "is under 1",
-    # 3
-    "safe stock order",
-    # 4
-    "big change in stock price on 2023/10/11",
-    # 5
-    "high average stock price on 2023/10/11",
-    # 6
-    "for sector ENERG high average stock price on 2023/10/11",
-    "sector food high average value on 2023/10/11",
-    # 7
-    "highest totalAssets in 2023"
+  # 8
+  "get average, open, close on 2023/10/11",
+  # 7
+  "highest totalAssets in 2023",
+  # 0
+  "for setcor ENERG order according to totalAssets based on all financial statements",
+  "sector energ, total assets, all reports",
+  # 1
+  "for sector ENERG order according to totalAssets based on latest financial statements",
+  "sector energ, total assets, latest reports"
+  # 2
+  "is 1 or more",
+  "is more than 1",
+  "is over 1",
+  "is above 1",
+  "is 1 or less",
+  "is under 1",
+  # 3
+  "safe stock order",
+  # 4
+  "big change in stock price on 2023/10/11",
+  # 5
+  "high average stock price on 2023/10/11",
+  "high average price on 2023/10/11",
+  "high average stock price on 2023/10/11(open, close)",
+  "high average stock price on 2023/10/11 with open, close"
+  # 6
+  "for sector ENERG high average stock price on 2023/10/11",
+  "sector food high average value on 2023/10/11",
+  "sector energ high average on 2023/10/11 with open, close",
+  "sector energ high average on 2023/10/11(open, close)"
 ]
 
 PROMPT_ID = [
-    0,
-    0,
-    1,
-    1,
-    2,
-    2,
-    2,
-    2,
-    2,
-    2,
-    3,
-    4,
-    5,
-    6,
-    6,
-    7
+  8,
+  7,
+  0,
+  0,
+  1,
+  1,
+  2,
+  2,
+  2,
+  2,
+  2,
+  2,
+  3,
+  4,
+  5,
+  5,
+  5,
+  6,
+  6,
+  6,
+  6
 ]
 
 # https://media.set.or.th/set/Documents/2022/Oct/05_1_Company_Fundamental_Specification.pdf
@@ -176,9 +187,10 @@ def find_most_related_prompt(text):
   max_cos = 0
   max_cos_index = -1
 
+  if "safe" in text:
+    return 3
+
   for i in range(len(PROMPT)):
-    if "safe" in text:
-      return 3
     cos = calc_cos_text(text, PROMPT[i])
     if cos > max_cos:
       max_cos = cos
@@ -331,6 +343,20 @@ def find_year(text):
   pattern = r'\b\d{4}\b'
   return re.findall(pattern, text)[0]
 
+def get_stock_value_value_list(text):
+  output = []
+  split_text = text.split()
+  for w in split_text:
+    for i in range(len(STOCK_VALUE_VALUE)):
+      if w in STOCK_VALUE_VALUE[i] or w[:-1] in STOCK_VALUE_VALUE[i] or w[1:-1] in STOCK_VALUE_VALUE[i]:
+        output.append(STOCK_VALUE_VALUE[i])
+        break
+  output = list(OrderedDict.fromkeys(output))
+  if output == []:
+    print("No Match: STOCK_VALUE_VALUE")
+    return "ERROR"
+  return output
+
 def create_cypher_code(prompt_id, text):
   output_command = ""
   if prompt_id == 0:
@@ -406,29 +432,73 @@ def create_cypher_code(prompt_id, text):
     stock_value_value = find_stock_value_value(text)
     if today_str == "ERROR" or stock_value_value == "ERROR":
       return ""
-    output_command = 'MATCH (a:Stock)-[r:STOCK_VALUE {date: "' + today_str + '"}]->(b:StockValue)\n' + \
-      "WITH a.symbol AS symbol, b." + stock_value_value + " AS " + stock_value_value + "\n" + \
-      "RETURN symbol, " + stock_value_value + "\n" + \
-      "ORDER BY " + stock_value_value + " DESC"
+    if "(" in text or 'with' in text:
+      stock_value_value_list = get_stock_value_value_list(text)
+      stock_value_value_list.remove(stock_value_value)
+      if stock_value_value_list == "ERROR":
+        return ""
+      output_command = 'MATCH (a:Stock)-[r:STOCK_VALUE {date: "' + today_str + '"}]->(b:StockValue)\n' + \
+        "WITH a.symbol AS symbol, b." + stock_value_value + " AS " + stock_value_value + ", "
+      for s in stock_value_value_list:
+        output_command += "b." + s + " AS " + s + ", "
+      output_command = output_command[:-2]
+      output_command += "\nRETURN symbol, " + stock_value_value + ", "
+      for s in stock_value_value_list:
+        output_command += s + ", "
+      output_command = output_command[:-2] + "\nORDER BY " + stock_value_value + " DESC"
+    else:
+      output_command = 'MATCH (a:Stock)-[r:STOCK_VALUE {date: "' + today_str + '"}]->(b:StockValue)\n' + \
+        "WITH a.symbol AS symbol, b." + stock_value_value + " AS " + stock_value_value + "\n" + \
+        "RETURN symbol, " + stock_value_value + "\n" + \
+        "ORDER BY " + stock_value_value + " DESC"
   elif prompt_id == 6:
     sector = find_sector(text)
     today_str = find_date(text)
     stock_value_value = find_stock_value_value(text)
     if sector == "ERROR" or today_str == "ERROR" or stock_value_value == "ERROR":
       return ""
-    output_command = "MATCH (:StandardIndustrialClassification {sectorCode: '" + sector + "'})<-[:BELONGING_SECTOR]-(:Company)-[:STOCK]->(c:Stock)-[:STOCK_VALUE {date: '" + today_str + "'}]->(d:StockValue)\n" + \
-      "WITH c.symbol AS symbol, d." + stock_value_value + " AS " + stock_value_value + "\n" + \
-      "RETURN symbol, " + stock_value_value + "\n" + \
-      "ORDER BY " + stock_value_value + " DESC"
+    if "(" in text or "with" in text:
+      stock_value_value_list = get_stock_value_value_list(text)
+      stock_value_value_list.remove(stock_value_value)
+      if stock_value_value_list == "ERROR":
+        return ""
+      output_command = "MATCH (:StandardIndustrialClassification {sectorCode: '" + sector + "'})<-[:BELONGING_SECTOR]-(:Company)-[:STOCK]->(c:Stock)-[:STOCK_VALUE {date: '" + today_str + "'}]->(d:StockValue)\n" + \
+        "WITH c.symbol AS symbol, d." + stock_value_value + " AS " + stock_value_value + ", "
+      for s in stock_value_value_list:
+        output_command += "d." + s + " AS " + s + ", "
+      output_command = output_command[:-2] + "\nRETURN symbol, " + stock_value_value + ", "
+      for s in stock_value_value_list:
+        output_command += s + ", "
+      output_command = output_command[:-2] + "\nORDER BY " + stock_value_value + " DESC"
+    else:
+      output_command = "MATCH (:StandardIndustrialClassification {sectorCode: '" + sector + "'})<-[:BELONGING_SECTOR]-(:Company)-[:STOCK]->(c:Stock)-[:STOCK_VALUE {date: '" + today_str + "'}]->(d:StockValue)\n" + \
+        "WITH c.symbol AS symbol, d." + stock_value_value + " AS " + stock_value_value + "\n" + \
+        "RETURN symbol, " + stock_value_value + "\n" + \
+        "ORDER BY " + stock_value_value + " DESC"
   elif prompt_id == 7:
     year = find_year(text)
     financial_statement_value = find_financial_statement_value(text)
     if year == "ERROR" or financial_statement_value == "ERROR":
       return ""
     output_command = "MATCH (a:Stock)<-[:STOCK]-(:Company)-[:REPORT]->(b:FinancialStatement)\n" + \
-      "WHERE b." + financial_statement_value + " AND b.year = " + year + "\n" + \
-      "WITH a. symbol AS symbol, b.year AS year, b.quarter AS quarter, b." + financial_statement_value + " AS " + financial_statement_value + "\n" + \
+      "WHERE " + "b.year = " + year + "\n" + \
+      "WITH a.symbol AS symbol, b.year AS year, b.quarter AS quarter, b." + financial_statement_value + " AS " + financial_statement_value + "\n" + \
       "RETURN symbol, year, quarter, " + financial_statement_value
+  elif prompt_id == 8:
+    date = find_date(text)
+    stock_value_value_list = get_stock_value_value_list(text)
+    if date == "ERROR" or stock_value_value_list == "ERROR":
+      return ""
+    output_command = "MATCH (c:Stock)-[:STOCK_VALUE {date: '" + date + "'}]->(d:StockValue)\n" + \
+        "WITH c.symbol AS symbol, "
+    for s in stock_value_value_list:
+      output_command += "d." + s + " AS " + s + ", "
+    output_command = output_command[:-2]
+    output_command += "\nRETURN symbol, "
+    for s in stock_value_value_list:
+      output_command += s + ", "
+    output_command = output_command[:-2]
+
   return output_command
 
 def main(input_command):
@@ -474,7 +544,6 @@ def main(input_command):
         if data == []:
           return "error", ""
         df = pd.DataFrame(data, columns=column_names)
-        print(df)
 
         keywords = ["MATCH", "WITH", "WHERE", "RETURN", "LIMIT", "ORDER BY", "DESC", "AS", "AND"]
         pattern_string = r'("[^"]+?")'
