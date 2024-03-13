@@ -41,8 +41,7 @@ def find_most_related_prompt(text):
       # 1
       "for sector ENERG order according to totalAssets based on latest financial statements",
       # 2
-      "eps is 1 or more",
-      "eps is under 1",
+      "show stocks whose eps is more than 1 and de is more than 1 with showing ebit",
       # 3
       "safe stock order",
       # 4
@@ -60,9 +59,9 @@ def find_most_related_prompt(text):
     ]
 
     when the input is given, you return the number which is the most similar among the template prompts.
-    Also, you should return the information of sector, feature of stock value(used to order data), list of stock value featue(not used to order data) date, year, feature of financial statement, condition, and quarter.
+    Also, you should return the information of sector, feature of stock value(used to order data), list of stock value feature(not used to order data) date, year, feature of financial statement(used to order data), feature of financial statement(not used to order data), condition, and quarter.
     The format id as follows;
-    {"prompt": 1, "sector": "ENERG", "stock_value_value": "average", "stock_value_value_list": ["low", "high"], "date": "2023/10/11", "year": "2023", "financial_statement_value": "totalAssets", "condition": "epsQuarter > 1", "quarter": 3}
+    {"prompt": 1, "sector": "ENERG", "stock_value_value": "average", "stock_value_value_list": ["low", "high"], "date": "2023/10/11", "year": "2023", "financial_statement_value": "totalAssets", "financial_statement_value_list": ["totalLiabilities", "netProfitQuarter"], "condition": "epsQuarter>1 AND de<1", "quarter": 3}
     If there is no proper value, the content shold be "".
 
     The value of stock_value_value is one of the following;
@@ -75,7 +74,7 @@ def find_most_related_prompt(text):
     "roa",
     "roe",
     "de",
-    "financialStatementtype",
+    "financialStatementType",
     "dateAsOf",
     "accountPeriod",
     "totalAssets",
@@ -100,11 +99,13 @@ def find_most_related_prompt(text):
     "fixedAssetTurnover"
     ]
     There are some values which have *Quarter and *Accum. If there is no mention in the input, select '*Quarter'.
+    If there is no value for financial_statement_value_list, just return [].
 
     The value of financial_statement_value is one of the following;
     SECTOR = ["ICT", "TRANS", "PROP", "ENERG", "BANK", "HELTH", "FOOD", "TOURISM", "COMM", "ETRON", "PETRO", "FIN", "CONMAT", "PKG", "INSUR"]
 
     Conditions consist of stock_value_value and equal or inequality signs.
+    If there are some conditions, they should be connected with "AND" or "OR".
 
     Date is given in the format of yyyy/mm/dd or yyyy-mm-dd, and if the input has the format of yyyy-q, q shold show quarter.
 
@@ -114,7 +115,7 @@ def find_most_related_prompt(text):
   gpt_output = ask_gpt(gpt_input)
   return gpt_output
 
-def create_cypher_code(prompt_id, sector, stock_value_value, stock_value_value_list, date, year, financial_statement_value, condition, quarter):
+def create_cypher_code(prompt_id, sector, stock_value_value, stock_value_value_list, date, year, financial_statement_value, financial_statement_value_list, condition, quarter):
   output_command = ""
   if prompt_id == 0:
     if sector == "" or financial_statement_value == "":
@@ -124,11 +125,20 @@ def create_cypher_code(prompt_id, sector, stock_value_value, stock_value_value_l
       "'})<-[:BELONGING_SECTOR]-(b:Company)-[:REPORT]->(c:FinancialStatement)\nWITH c.year AS reportYear, c.quarter AS reportQuarter, b, c." + \
       financial_statement_value + \
       " AS " + \
-      financial_statement_value + \
+      financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += "c." + f + " AS " + f + ", "
+    output_command = output_command[:-2] + \
       "\nMATCH (b)-[:STOCK]->(d:Stock)\n" + \
-      "WITH reportYear, reportQuarter, d.symbol AS symbol, " + financial_statement_value + \
+      "WITH reportYear, reportQuarter, d.symbol AS symbol, " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += f + ", "
+    output_command = output_command[:-2] + \
       "\nRETURN symbol, reportYear, reportQuarter, " + \
-      financial_statement_value + \
+      financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += f + ", "
+    output_command = output_command[:-2] + \
       "\nORDER BY " + financial_statement_value + " DESC"
   elif prompt_id == 1:
     if sector == "" or financial_statement_value == "":
@@ -138,13 +148,21 @@ def create_cypher_code(prompt_id, sector, stock_value_value, stock_value_value_l
       "WITH yearQuarterSum, COLLECT(yearQuarterSum) AS maxSums\n" + \
       "WITH MAX(maxSums)[0] AS maxSum\n" + \
       "MATCH (:StandardIndustrialClassification {sectorCode:'" + sector + "'})<-[:BELONGING_SECTOR]-(b:Company)-[:REPORT]->(c:FinancialStatement)\n" + \
-      "WITH b, c." + financial_statement_value + " AS " + financial_statement_value + ", 10 * c.year + c.quarter AS yearQuarterSum, maxSum\n" + \
+      "WITH b, c." + financial_statement_value + " AS " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += "c." + f + " AS " + f + ", "
+    output_command += "10 * c.year + c.quarter AS yearQuarterSum, maxSum\n" + \
       "MATCH (b)-[:STOCK]->(d:Stock)\n" + \
-      "WITH " + financial_statement_value + ", d.symbol AS symbol, yearQuarterSum, maxSum" + \
+      "WITH " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += f + ", "
+    output_command += "d.symbol AS symbol, yearQuarterSum, maxSum" + \
       "\nWHERE yearQuarterSum = maxSum\n" + \
-      "RETURN symbol, " + financial_statement_value + \
-      "\nORDER BY " + financial_statement_value + " DESC"
-  elif prompt_id == 2:
+      "RETURN symbol, " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command +=  f + ", "
+    output_command = output_command[:-2] + "\nORDER BY " + financial_statement_value + " DESC"
+  elif prompt_id == 2 or condition != "":
     if condition == "":
       return ""
     output_command = "MATCH (c:FinancialStatement)\n" + \
@@ -152,9 +170,18 @@ def create_cypher_code(prompt_id, sector, stock_value_value, stock_value_value_l
       "WITH COLLECT(yearQuarterSum) AS maxSums\n" + \
       "WITH MAX(maxSums)[0] AS maxSum\n" + \
       "MATCH (a:Stock)<-[:STOCK]-(:Company)-[:REPORT]->(b:FinancialStatement)\n" + \
-      "WHERE b." + condition + " AND 10 * b.year + b.quarter = maxSum\n" + \
-      "WITH a.symbol AS symbol\n" + \
-      "RETURN symbol"
+      "WHERE "
+    condition_list = condition.split()
+    for i in range(0, len(condition_list)-1, 2):
+      output_command += "b." + condition_list[i] + " " + condition_list[i+1] + " "
+    output_command += "b." + condition_list[-1] + " AND 10 * b.year + b.quarter = maxSum\n" + \
+      "WITH a.symbol AS symbol, b." + financial_statement_value + " AS " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += "b." + f + " AS " + f + ", "
+    output_command = output_command[:-2] +  "\nRETURN symbol, " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += f + ", "
+    output_command = output_command[:-2]
   elif prompt_id == 3:
     output_command = "MATCH (a:FinancialStatement)\n" + \
       "WITH 10 * a.year + a.quarter AS yearQuarterSum\n" + \
@@ -206,9 +233,13 @@ def create_cypher_code(prompt_id, sector, stock_value_value, stock_value_value_l
       return ""
     output_command = "MATCH (a:Stock)<-[:STOCK]-(:Company)-[:REPORT]->(b:FinancialStatement)\n" + \
       "WHERE " + "b.year = " + str(year) + "\n" + \
-      "WITH a.symbol AS symbol, b.year AS year, b.quarter AS quarter, b." + financial_statement_value + " AS " + financial_statement_value + "\n" + \
-      "RETURN symbol, year, quarter, " + financial_statement_value + \
-      "\nORDER BY " + financial_statement_value + " DESC"
+      "WITH a.symbol AS symbol, b.year AS year, b.quarter AS quarter, b." + financial_statement_value + " AS " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += "b." + f + " AS " + f + ", "
+    output_command = output_command[:-2] + "\nRETURN symbol, year, quarter, " + financial_statement_value + ", "
+    for f in financial_statement_value_list:
+      output_command += f + ", "
+    output_command = output_command[:-2] +  "\nORDER BY " + financial_statement_value + " DESC"
   elif prompt_id == 8:
     if date == "ERROR" or stock_value_value_list == "ERROR":
       return ""
@@ -246,12 +277,13 @@ def main(input_command):
   date = json_output.get('date', '')
   year = json_output.get('year', '')
   financial_statement_value = json_output.get('financial_statement_value', '')
+  financial_statement_value_list = json_output.get('financial_statement_value_list', '')
   condition = json_output.get('condition', '')
   quarter = json_output.get('quarter', '')
   if prompt == '':
     print("No Match: PROMPT\n")
     return "error", ""
-  output_command = create_cypher_code(prompt, sector, stock_value_value, stock_value_value_list, date, year, financial_statement_value, condition, quarter)
+  output_command = create_cypher_code(prompt, sector, stock_value_value, stock_value_value_list, date, year, financial_statement_value, financial_statement_value_list, condition, quarter)
 
   if output_command == "":
     return "error", ""
@@ -287,7 +319,7 @@ def main(input_command):
           return "error", ""
         df = pd.DataFrame(data, columns=column_names)
 
-        keywords = ["MATCH", "WITH", "WHERE", "RETURN", "LIMIT", "ORDER BY", "DESC", "AS", "AND"]
+        keywords = ["MATCH", "WITH", "WHERE", "RETURN", "LIMIT", "ORDER BY", "DESC", "AS", "AND", " OR "]
         pattern_string = r'("[^"]+?")'
         pattern_brackets = r'\(([^:\)]+):'
         pattern_dot = r'\s([a-zA-Z]+?)\.'
