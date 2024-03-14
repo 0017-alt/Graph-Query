@@ -12,7 +12,7 @@ import json
 nlp = spacy.load("en_core_web_sm")
 
 # Initialize OpenAI API
-openai.api_key = "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"
+openai.api_key = ""
 
 def ask_gpt(insert_prompt):
   model_choice = "gpt-4"
